@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Find it in π</title>
-<meta name="description" content="Search the first 10,000,000 digits of pi for any number: birthdays, PINs, lucky numbers. Instant, private, runs entirely in your browser.">
+<meta name="description" content="Search the first 50,000,000 digits of pi for any number: birthdays, PINs, lucky numbers. Instant, private, runs entirely in your browser.">
 <meta name="theme-color" content="#0b0b12">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236d5efc'/%3E%3Ctext x='50' y='72' font-size='64' text-anchor='middle' fill='white' font-family='Georgia,serif'%3E%CF%80%3C/text%3E%3C/svg%3E">
 <style>
@@ -84,10 +84,9 @@ button:disabled{opacity:.5; cursor:default}
 .ctx{color:var(--muted)}
 mark{background:var(--hit); color:var(--hit-ink); border-radius:5px; padding:1px 2px; font-weight:700}
 .more{margin-top:12px; text-align:center}
+.note{margin-top:10px; font-size:13px; color:var(--muted); text-align:center}
 .actions{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap}
-.empty{margin-top:18px; color:var(--muted)}
 footer{margin-top:28px; text-align:center; color:var(--muted); font-size:13px}
-footer a{color:inherit}
 .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
 @media (max-width:480px){.pi{font-size:60px} h1{font-size:26px} input{font-size:22px}}
 </style>
@@ -97,7 +96,7 @@ footer a{color:inherit}
   <header>
     <div class="pi" aria-hidden="true">π</div>
     <h1>Find it in pi</h1>
-    <p class="sub">Search the first 10,000,000 digits for any number. Everything runs in your browser; nothing you type leaves your device.</p>
+    <p class="sub">Search the first 50,000,000 digits for any number. Everything runs in your browser; nothing you type leaves your device.</p>
   </header>
 
   <main class="box">
@@ -129,59 +128,102 @@ footer a{color:inherit}
 
 <script>
 (() => {
-  const DIGITS_URL = 'pi-10m.txt';
-  const CTX = 18;       // digits of context shown either side of a match
-  const SHOW = 25;      // matches listed per page
+  const TOTAL = 50000000;   // digits in the full set
+  const CHUNKS = 10;        // files of 5,000,000 digits each, loaded in the background
+  const CTX = 18;           // digits of context shown either side of a match
+  const SHOW = 25;          // matches listed per page
+  const KEEP = 1000;        // matches kept for listing (the total is still counted)
   const $ = id => document.getElementById(id);
   const q = $('q'), statusEl = $('status'), bar = $('bar'), barfill = $('barfill');
   const result = $('result'), clearBtn = $('clear');
   const nf = new Intl.NumberFormat('en-GB');
 
-  let pi = '';
+  let pi = '';          // digits loaded so far (always a contiguous prefix)
+  let prefix = 0;       // chunks appended to pi
+  let loading = true;
+  let ready = false;    // true once the first chunk is in and the box is unlocked
+  let failed = null;
   let shown = SHOW;
-  let positions = [];
+  let found = { pos: [], count: 0 };
   let current = '';
   let timer = 0;
 
   // ---------- load ----------
-  async function load() {
-    try {
-      const res = await fetch(DIGITS_URL);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const total = Number(res.headers.get('content-length')) || 0;
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let got = 0, text = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        got += value.length;
-        text += dec.decode(value, { stream: true });
-        const frac = total ? Math.min(got / total, 1) : Math.min(text.length / 1e7, 1);
-        barfill.style.width = (frac * 100).toFixed(0) + '%';
-        statusEl.textContent = 'Loading digits… ' + nf.format(text.length);
+  const chunkUrl = i => 'pi/' + String(i).padStart(2, '0') + '.txt';
+
+  async function fetchChunk(i) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetch(chunkUrl(i));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return (await res.text()).trim();
+      } catch (e) {
+        if (attempt >= 2) throw e;
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
       }
-      text += dec.decode();
-      pi = text.trim();
-      bar.hidden = true;
-      statusEl.textContent = nf.format(pi.length) + ' digits ready. Type to search.';
+    }
+  }
+
+  async function load() {
+    const parts = new Array(CHUNKS).fill(null);
+    let next = 0;
+    const absorb = () => {
+      let grew = false;
+      while (prefix < CHUNKS && parts[prefix] !== null) {
+        pi += parts[prefix];
+        parts[prefix] = null;
+        prefix++;
+        grew = true;
+      }
+      if (grew) onGrow();
+    };
+    const worker = async () => {
+      while (next < CHUNKS && !failed) {
+        const i = next++;
+        try { parts[i] = await fetchChunk(i); absorb(); }
+        catch (e) { failed = e; }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    loading = false;
+    bar.hidden = true;
+    updateStatus();
+    if (current) rerun();
+  }
+
+  function onGrow() {
+    barfill.style.width = (prefix / CHUNKS * 100).toFixed(0) + '%';
+    if (!ready) {
+      ready = true;
       q.disabled = false;
       q.focus({ preventScroll: true });
       const initial = new URLSearchParams(location.search).get('q');
       if (initial) { q.value = initial; run(); }
-    } catch (e) {
-      bar.hidden = true;
-      statusEl.textContent = 'Could not load the digits file (' + e.message + '). Try refreshing.';
+    } else if (current) {
+      clearTimeout(timer);
+      timer = setTimeout(rerun, 150);
+    }
+    updateStatus();
+  }
+
+  function updateStatus() {
+    if (failed) {
+      statusEl.textContent = 'Could not load every chunk (' + failed.message + '). Searching the ' + nf.format(pi.length) + ' digits that did load.';
+    } else if (loading) {
+      statusEl.textContent = 'Loading digits… ' + nf.format(pi.length) + ' of ' + nf.format(TOTAL) + ' (first visit only, then cached)';
+    } else if (!current) {
+      statusEl.textContent = nf.format(pi.length) + ' digits ready. Type to search.';
+    } else {
+      statusEl.textContent = '';
     }
   }
 
   // ---------- maths ----------
-  // Probability that a specific L-digit string appears at least once in N random digits.
+  // Probability that a specific L-digit string appears at least once in the loaded digits.
   function chance(L) {
     const n = pi.length - L + 1;
     if (n <= 0) return 0;
-    const lambda = n / Math.pow(10, L);
-    return 1 - Math.exp(-lambda);
+    return 1 - Math.exp(-n / Math.pow(10, L));
   }
   function pct(p) {
     if (p >= 0.9999) return '99.99%+';
@@ -199,42 +241,63 @@ footer a{color:inherit}
   }
 
   function findAll(needle) {
-    const out = [];
+    const pos = [];
+    let count = 0;
     let i = pi.indexOf(needle);
-    while (i !== -1) { out.push(i); i = pi.indexOf(needle, i + 1); }
-    return out;
+    while (i !== -1) {
+      if (pos.length < KEEP) pos.push(i);
+      count++;
+      i = pi.indexOf(needle, i + 1);
+    }
+    return { pos, count };
   }
 
   function run() {
     const needle = clean(q.value);
     clearBtn.hidden = !q.value;
     current = needle;
-    if (!needle) { result.hidden = true; statusEl.textContent = nf.format(pi.length) + ' digits ready. Type to search.'; syncUrl(''); return; }
-    const t0 = performance.now();
-    positions = findAll(needle);
-    const ms = performance.now() - t0;
     shown = SHOW;
-    statusEl.textContent = '';
-    render(needle, ms);
+    if (!needle) { result.hidden = true; updateStatus(); syncUrl(''); return; }
+    search(needle);
     syncUrl(needle);
+    updateStatus();
   }
 
-  function esc(s) { return s; } // digits only, nothing to escape
+  // re-run the active search against newly loaded digits, keeping the list position
+  function rerun() {
+    if (!current) return;
+    const keep = shown;
+    search(current);
+    shown = Math.max(keep, SHOW);
+  }
+
+  function search(needle) {
+    const t0 = performance.now();
+    found = findAll(needle);
+    render(needle, performance.now() - t0);
+  }
 
   function render(needle, ms) {
     const L = needle.length;
     const p = chance(L);
-    const count = positions.length;
+    const count = found.count;
+    const complete = !loading && !failed && pi.length >= TOTAL;
     let html = '';
 
     if (count) {
-      const first = positions[0] + 1;
-      html += '<div class="headline">Found at digit ' + nf.format(first) +
+      html += '<div class="headline">Found at digit ' + nf.format(found.pos[0] + 1) +
         '<small>' + (count === 1 ? 'Appears once' : 'Appears ' + nf.format(count) + ' times') +
-        ' in ' + nf.format(pi.length) + ' digits · searched in ' + ms.toFixed(1) + ' ms</small></div>';
-    } else {
+        ' in ' + (complete ? 'the ' : 'the first ') + nf.format(pi.length) + ' digits' + (complete ? '' : ' so far') +
+        ' · searched in ' + ms.toFixed(1) + ' ms</small></div>';
+    } else if (complete) {
       html += '<div class="headline">Not in the first ' + nf.format(pi.length) + ' digits' +
-        '<small>' + (L >= 8 ? 'That’s normal for long numbers: see the odds below.' : 'Unlucky! Try a shorter sequence.') + '</small></div>';
+        '<small>' + (L >= 9 ? 'That’s normal for long numbers: see the odds below.' : 'Unlucky! Try a shorter sequence.') + '</small></div>';
+    } else if (failed) {
+      html += '<div class="headline">Not in the ' + nf.format(pi.length) + ' digits that loaded' +
+        '<small>Some digits failed to load, so it could still be further along. Try refreshing.</small></div>';
+    } else {
+      html += '<div class="headline">Not found yet' +
+        '<small>Searched ' + nf.format(pi.length) + ' of ' + nf.format(TOTAL) + ' digits so far. Still loading, results update on their own.</small></div>';
     }
 
     html += '<div class="meter"><div class="row"><span>Chance a ' + L + '-digit number is in here</span><b>' + pct(p) + '</b></div>' +
@@ -242,8 +305,9 @@ footer a{color:inherit}
       '<p>' + oddsNote(L, p) + '</p></div>';
 
     if (count) {
-      html += '<ul class="matches">' + positions.slice(0, shown).map(matchRow(L)).join('') + '</ul>';
-      if (count > shown) html += '<div class="more"><button id="more">Show more (' + nf.format(count - shown) + ' left)</button></div>';
+      html += '<ul class="matches">' + found.pos.slice(0, shown).map(matchRow(L)).join('') + '</ul>';
+      if (found.pos.length > shown) html += '<div class="more"><button id="more">Show more</button></div>';
+      else if (count > found.pos.length) html += '<div class="note">Showing the first ' + nf.format(found.pos.length) + ' of ' + nf.format(count) + ' matches.</div>';
     }
 
     html += '<div class="actions"><button class="primary" id="share">Copy link</button></div>';
@@ -270,11 +334,11 @@ footer a{color:inherit}
   }
 
   function oddsNote(L, p) {
-    if (L <= 5) return 'Short sequences are practically guaranteed to show up.';
-    if (L === 6) return 'Almost every 6-digit number (like DDMMYY) appears at least once.';
-    if (L === 7) return 'Around 1 in 3 seven-digit numbers is missing from 10 million digits.';
-    if (L === 8) return 'Roughly 1 in 10 eight-digit numbers (like DDMMYYYY) appears. If yours does, that’s a lucky find.';
-    return 'You’d need about ' + nf.format(Math.pow(10, L)) + ' digits to expect a match. Phone numbers need trillions of digits.';
+    const base = 'About ' + pct(p) + ' of all ' + L + '-digit numbers appear in these ' + nf.format(pi.length) + ' digits.';
+    if (L >= 10) return base + ' Phone numbers need trillions of digits.';
+    if (L === 8) return base + ' That covers DDMMYYYY dates, so if yours is here it’s a lucky find.';
+    if (L === 6) return base + ' That covers DDMMYY dates.';
+    return base;
   }
 
   function syncUrl(n) {
@@ -283,7 +347,6 @@ footer a{color:inherit}
 
   // ---------- wiring ----------
   q.addEventListener('input', () => {
-    // keep the box tidy: digits (and a leading "3.") only
     clearTimeout(timer);
     timer = setTimeout(run, 60);
   });
