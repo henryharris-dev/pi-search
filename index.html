@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Find it in π</title>
+<meta name="description" content="Search the first 10,000,000 digits of pi for any number: birthdays, PINs, lucky numbers. Instant, private, runs entirely in your browser.">
+<meta name="theme-color" content="#0b0b12">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236d5efc'/%3E%3Ctext x='50' y='72' font-size='64' text-anchor='middle' fill='white' font-family='Georgia,serif'%3E%CF%80%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f6f6fb; --card:#ffffff; --ink:#14141f; --muted:#6b6b80; --line:#e4e4ee;
+  --accent:#6d5efc; --accent-2:#b04cff; --hit:#fff1b8; --hit-ink:#5a4300;
+  --good:#16a34a; --warn:#d97706; --bad:#dc2626; --shadow:0 10px 40px rgba(60,40,140,.10);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b0b12; --card:#14141f; --ink:#f1f1f8; --muted:#8e8ea6; --line:#252536;
+    --accent:#8b7dff; --accent-2:#c26bff; --hit:#4a3b00; --hit-ink:#ffe28a;
+    --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --shadow:0 10px 40px rgba(0,0,0,.45);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,sans-serif;
+  min-height:100vh; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  background-image:
+    radial-gradient(900px 400px at 10% -10%, color-mix(in srgb,var(--accent) 22%,transparent), transparent 60%),
+    radial-gradient(700px 380px at 100% 0%, color-mix(in srgb,var(--accent-2) 16%,transparent), transparent 60%);
+  background-repeat:no-repeat;
+}
+.wrap{max-width:720px; margin:0 auto; padding:0 16px 64px}
+header{padding:56px 0 24px; text-align:center}
+.pi{
+  font:700 76px/1 Georgia,"Times New Roman",serif;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+h1{font-size:30px; letter-spacing:-.02em; margin:12px 0 6px}
+.sub{color:var(--muted); margin:0 auto; max-width:480px}
+.box{
+  background:var(--card); border:1px solid var(--line); border-radius:22px;
+  box-shadow:var(--shadow); padding:18px;
+}
+.field{display:flex; gap:10px; align-items:center}
+input{
+  flex:1; min-width:0; font:600 26px/1.2 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  letter-spacing:.04em; color:var(--ink); background:transparent;
+  border:0; outline:0; padding:10px 6px;
+}
+input::placeholder{color:var(--muted); font-weight:400; letter-spacing:0}
+.field{border-bottom:2px solid var(--line); transition:border-color .15s}
+.field:focus-within{border-color:var(--accent)}
+button{
+  font:inherit; font-weight:600; border:0; cursor:pointer; border-radius:12px;
+  padding:10px 14px; color:var(--ink); background:color-mix(in srgb,var(--ink) 7%,transparent);
+}
+button:hover{background:color-mix(in srgb,var(--ink) 12%,transparent)}
+button.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff}
+button:disabled{opacity:.5; cursor:default}
+.chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+.chip{font-size:14px; padding:6px 12px; border-radius:999px; font-family:ui-monospace,Menlo,monospace}
+.status{margin-top:16px; color:var(--muted); font-size:14px; min-height:21px}
+.bar{height:6px; border-radius:99px; background:var(--line); overflow:hidden; margin-top:10px}
+.bar>i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .2s}
+.result{margin-top:18px}
+.headline{font-size:22px; font-weight:700; letter-spacing:-.01em}
+.headline small{display:block; font-size:14px; font-weight:500; color:var(--muted); margin-top:2px}
+.meter{margin-top:16px; padding:14px; border-radius:14px; background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.meter .row{display:flex; justify-content:space-between; gap:12px; font-size:14px}
+.meter .row b{font-variant-numeric:tabular-nums}
+.meter .track{height:8px; border-radius:99px; background:var(--line); margin:8px 0 6px; overflow:hidden}
+.meter .track i{display:block; height:100%; border-radius:99px; width:0; transition:width .35s}
+.meter p{margin:0; font-size:13px; color:var(--muted)}
+.matches{list-style:none; margin:18px 0 0; padding:0; display:grid; gap:8px}
+.matches li{
+  border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+  font:15px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  word-break:break-all; overflow-wrap:anywhere;
+}
+.matches .pos{display:block; font:600 12px/1 -apple-system,"Inter",sans-serif; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:6px}
+.ctx{color:var(--muted)}
+mark{background:var(--hit); color:var(--hit-ink); border-radius:5px; padding:1px 2px; font-weight:700}
+.more{margin-top:12px; text-align:center}
+.actions{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap}
+.empty{margin-top:18px; color:var(--muted)}
+footer{margin-top:28px; text-align:center; color:var(--muted); font-size:13px}
+footer a{color:inherit}
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
+@media (max-width:480px){.pi{font-size:60px} h1{font-size:26px} input{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="pi" aria-hidden="true">π</div>
+    <h1>Find it in pi</h1>
+    <p class="sub">Search the first 10,000,000 digits for any number. Everything runs in your browser; nothing you type leaves your device.</p>
+  </header>
+
+  <main class="box">
+    <label class="sr" for="q">Digits to search for</label>
+    <div class="field">
+      <input id="q" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Try a birthday, like 140692" disabled>
+      <button id="clear" title="Clear" aria-label="Clear" hidden>✕</button>
+    </div>
+
+    <div class="chips" id="chips">
+      <button class="chip" data-q="314159">314159</button>
+      <button class="chip" data-q="999999">999999</button>
+      <button class="chip" data-q="123456">123456</button>
+      <button class="chip" data-q="2026">2026</button>
+      <button class="chip" id="rand">🎲 random</button>
+    </div>
+
+    <div class="status" id="status">Loading digits…</div>
+    <div class="bar" id="bar"><i id="barfill"></i></div>
+
+    <div class="result" id="result" hidden></div>
+  </main>
+
+  <footer>
+    Positions count digits after the decimal point (the “3.” isn’t included).<br>
+    Odds are for random digit strings, since pi’s digits behave like random ones.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const DIGITS_URL = 'pi-10m.txt';
+  const CTX = 18;       // digits of context shown either side of a match
+  const SHOW = 25;      // matches listed per page
+  const $ = id => document.getElementById(id);
+  const q = $('q'), statusEl = $('status'), bar = $('bar'), barfill = $('barfill');
+  const result = $('result'), clearBtn = $('clear');
+  const nf = new Intl.NumberFormat('en-GB');
+
+  let pi = '';
+  let shown = SHOW;
+  let positions = [];
+  let current = '';
+  let timer = 0;
+
+  // ---------- load ----------
+  async function load() {
+    try {
+      const res = await fetch(DIGITS_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const total = Number(res.headers.get('content-length')) || 0;
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let got = 0, text = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        got += value.length;
+        text += dec.decode(value, { stream: true });
+        const frac = total ? Math.min(got / total, 1) : Math.min(text.length / 1e7, 1);
+        barfill.style.width = (frac * 100).toFixed(0) + '%';
+        statusEl.textContent = 'Loading digits… ' + nf.format(text.length);
+      }
+      text += dec.decode();
+      pi = text.trim();
+      bar.hidden = true;
+      statusEl.textContent = nf.format(pi.length) + ' digits ready. Type to search.';
+      q.disabled = false;
+      q.focus({ preventScroll: true });
+      const initial = new URLSearchParams(location.search).get('q');
+      if (initial) { q.value = initial; run(); }
+    } catch (e) {
+      bar.hidden = true;
+      statusEl.textContent = 'Could not load the digits file (' + e.message + '). Try refreshing.';
+    }
+  }
+
+  // ---------- maths ----------
+  // Probability that a specific L-digit string appears at least once in N random digits.
+  function chance(L) {
+    const n = pi.length - L + 1;
+    if (n <= 0) return 0;
+    const lambda = n / Math.pow(10, L);
+    return 1 - Math.exp(-lambda);
+  }
+  function pct(p) {
+    if (p >= 0.9999) return '99.99%+';
+    if (p < 0.0001) return '<0.01%';
+    if (p < 0.1) return (p * 100).toFixed(2) + '%';
+    return (p * 100).toFixed(1) + '%';
+  }
+  function colour(p) { return p > 0.6 ? 'var(--good)' : p > 0.1 ? 'var(--warn)' : 'var(--bad)'; }
+
+  // ---------- search ----------
+  function clean(raw) {
+    let s = raw.trim();
+    if (/^3[.,]/.test(s)) s = s.slice(2);   // allow "3.14159"
+    return s.replace(/\D/g, '');
+  }
+
+  function findAll(needle) {
+    const out = [];
+    let i = pi.indexOf(needle);
+    while (i !== -1) { out.push(i); i = pi.indexOf(needle, i + 1); }
+    return out;
+  }
+
+  function run() {
+    const needle = clean(q.value);
+    clearBtn.hidden = !q.value;
+    current = needle;
+    if (!needle) { result.hidden = true; statusEl.textContent = nf.format(pi.length) + ' digits ready. Type to search.'; syncUrl(''); return; }
+    const t0 = performance.now();
+    positions = findAll(needle);
+    const ms = performance.now() - t0;
+    shown = SHOW;
+    statusEl.textContent = '';
+    render(needle, ms);
+    syncUrl(needle);
+  }
+
+  function esc(s) { return s; } // digits only, nothing to escape
+
+  function render(needle, ms) {
+    const L = needle.length;
+    const p = chance(L);
+    const count = positions.length;
+    let html = '';
+
+    if (count) {
+      const first = positions[0] + 1;
+      html += '<div class="headline">Found at digit ' + nf.format(first) +
+        '<small>' + (count === 1 ? 'Appears once' : 'Appears ' + nf.format(count) + ' times') +
+        ' in ' + nf.format(pi.length) + ' digits · searched in ' + ms.toFixed(1) + ' ms</small></div>';
+    } else {
+      html += '<div class="headline">Not in the first ' + nf.format(pi.length) + ' digits' +
+        '<small>' + (L >= 8 ? 'That’s normal for long numbers: see the odds below.' : 'Unlucky! Try a shorter sequence.') + '</small></div>';
+    }
+
+    html += '<div class="meter"><div class="row"><span>Chance a ' + L + '-digit number is in here</span><b>' + pct(p) + '</b></div>' +
+      '<div class="track"><i style="width:' + Math.max(p * 100, 1.5) + '%; background:' + colour(p) + '"></i></div>' +
+      '<p>' + oddsNote(L, p) + '</p></div>';
+
+    if (count) {
+      html += '<ul class="matches">' + positions.slice(0, shown).map(matchRow(L)).join('') + '</ul>';
+      if (count > shown) html += '<div class="more"><button id="more">Show more (' + nf.format(count - shown) + ' left)</button></div>';
+    }
+
+    html += '<div class="actions"><button class="primary" id="share">Copy link</button></div>';
+    result.innerHTML = html;
+    result.hidden = false;
+
+    const more = $('more');
+    if (more) more.onclick = () => { shown += SHOW; render(current, ms); };
+    $('share').onclick = async (e) => {
+      const url = location.origin + location.pathname + '?q=' + current;
+      try { await navigator.clipboard.writeText(url); e.target.textContent = 'Copied ✓'; }
+      catch { e.target.textContent = url; }
+    };
+  }
+
+  function matchRow(L) {
+    return pos => {
+      const a = Math.max(0, pos - CTX), b = Math.min(pi.length, pos + L + CTX);
+      return '<li><span class="pos">Digit ' + nf.format(pos + 1) + '</span>' +
+        '<span class="ctx">' + (a > 0 ? '…' : '3.') + pi.slice(a, pos) + '</span>' +
+        '<mark>' + pi.slice(pos, pos + L) + '</mark>' +
+        '<span class="ctx">' + pi.slice(pos + L, b) + (b < pi.length ? '…' : '') + '</span></li>';
+    };
+  }
+
+  function oddsNote(L, p) {
+    if (L <= 5) return 'Short sequences are practically guaranteed to show up.';
+    if (L === 6) return 'Almost every 6-digit number (like DDMMYY) appears at least once.';
+    if (L === 7) return 'Around 1 in 3 seven-digit numbers is missing from 10 million digits.';
+    if (L === 8) return 'Roughly 1 in 10 eight-digit numbers (like DDMMYYYY) appears. If yours does, that’s a lucky find.';
+    return 'You’d need about ' + nf.format(Math.pow(10, L)) + ' digits to expect a match. Phone numbers need trillions of digits.';
+  }
+
+  function syncUrl(n) {
+    try { history.replaceState(null, '', n ? '?q=' + n : location.pathname); } catch {}
+  }
+
+  // ---------- wiring ----------
+  q.addEventListener('input', () => {
+    // keep the box tidy: digits (and a leading "3.") only
+    clearTimeout(timer);
+    timer = setTimeout(run, 60);
+  });
+  clearBtn.onclick = () => { q.value = ''; run(); q.focus(); };
+  $('chips').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || q.disabled) return;
+    if (b.id === 'rand') {
+      const L = 4 + Math.floor(Math.random() * 3);
+      q.value = String(Math.floor(Math.random() * Math.pow(10, L))).padStart(L, '0');
+    } else q.value = b.dataset.q;
+    run();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
